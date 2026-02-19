@@ -1,0 +1,6 @@
+numpy
+gymnasium
+matplotlib
+pandas
+wandb
+optuna
