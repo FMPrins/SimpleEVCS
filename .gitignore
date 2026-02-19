@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+conda-env/
+*.conda
+
+# Conda
+*.condarc
+
+# Jupyter
+.ipynb_checkpoints
+
+# Logs
+*.log
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# MacOS
+.DS_Store
+
+# WandB
+wandb/
+
+# Data files (optional — remove if you want them tracked)
+data/
+outputs/
+models/
+
+# Matplotlib cache
+.matplotlib/
