@@ -1,10 +1,66 @@
 import numpy as np
 import wandb
 import optuna
+import matplotlib.pyplot as plt
 
 from qlearning import Qlearningagent
 from oneEV import EVChargingEnv
 from nEV import MultiEVChargingEnv
+
+
+def encode_state(obs, base=3):
+    """
+    Encodes a multi-EV state into a single integer.
+    Works for any number of EVs.
+    
+    obs: array-like of length n
+    base: number of discrete states per EV (default=3)
+    """
+    index = 0
+    n = len(obs)
+    
+    for i in range(n):
+        index += obs[i] * (base ** (n - i - 1))
+        
+    return index
+
+def encode_action(action_vec, I_max):
+    """
+    action_vec: array of length n_evs
+    """
+    base = I_max + 1
+    index = 0
+    n = len(action_vec)
+
+    for i in range(n):
+        index += action_vec[i] * (base ** (n - i - 1))
+
+    return index
+
+def decode_state(index, n_evs, base=3):
+    """
+    Decodes integer index back into EV state vector.
+    """
+    obs = np.zeros(n_evs, dtype=int)
+    
+    for i in range(n_evs - 1, -1, -1):
+        obs[i] = index % base
+        index //= base
+        
+    return obs
+
+def decode_action(index, n_evs, I_max):
+    """
+    Converts integer back into action vector.
+    """
+    base = I_max + 1
+    action = np.zeros(n_evs, dtype=int)
+
+    for i in range(n_evs - 1, -1, -1):
+        action[i] = index % base
+        index //= base
+
+    return action
 
 
 def objective(trial):
@@ -33,11 +89,13 @@ def objective(trial):
     )
     config = wandb.config
 
-    env = EVChargingEnv(t_max=100)
+    n_evs = 2
+    i_max = 10
+    env = MultiEVChargingEnv(t_max=100, i_max = i_max, p_max = 10, n_evs= n_evs)
 
     agent = Qlearningagent(
-        state_space_size=3, 
-        action_space_size=env.action_space.n,
+        state_space_size = 3 ** n_evs,              ##3 ** env.n_evs, 
+        action_space_size= (i_max + 1) ** n_evs,            ##(env.I_max + 1) ** env.n_envs,
         learning_rate=config.learning_rate,
         discount_factor=config.discount_factor,
         epsilon=config.epsilon,
@@ -48,18 +106,19 @@ def objective(trial):
 
     for episode in range(config.num_episodes):
         obs, _ = env.reset()
-        state = int(obs)
+        state = encode_state(obs)
         episode_reward = 0
         done = False
 
         while not done:
-            action = agent.select_action(state)
-            next_obs, reward, terminated, truncated, _ = env.step(action)
+            action_index = agent.select_action(state)
 
-            next_state = int(next_obs)
+            next_obs, reward, terminated, truncated, _ = env.step(action_index)
+
+            next_state = encode_state(next_obs)
             done = terminated or truncated
 
-            agent.update(state, action, reward, next_state, done)
+            agent.update(state, action_index, reward, next_state, done)
 
             state = next_state
             episode_reward += reward
@@ -84,6 +143,21 @@ def objective(trial):
             # if trial.should_prune():
             #     run.finish(exit_code=1) # Mark as failed/pruned in W&B
             #     raise optuna.exceptions.TrialPruned()
+
+            import matplotlib.pyplot as plt
+
+            plt.figure()
+            plt.imshow(agent.q_table, aspect='auto')
+            plt.colorbar()
+            plt.title(f"Q-table Heatmap (Episode {episode+1})")
+            plt.xlabel("Actions")
+            plt.ylabel("States")
+
+            wandb.log({
+                "Q_table_heatmap": wandb.Image(plt)
+            })
+
+            plt.close()
 
     final_performance = np.mean(total_rewards[-100:])
     run.finish() # 4. Close the run

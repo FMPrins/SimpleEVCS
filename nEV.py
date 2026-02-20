@@ -13,35 +13,34 @@ class MultiEVChargingEnv(gym.Env):
         self.T = t_max          # Total timesteps in episode
         self.I_max = i_max      # Max Current (Amps)
         self.n_evs = n_evs      # Number of charging ports
-        self.p_max = p_max      # Total available current (Amps)
+        self.P_max = p_max      # Total available current (Amps)
         self.V = voltage        # Voltage (Volts)
         self.C = capacity       # Battery Capacity (kWh)
         self.delta_t = delta_t  # Hours per timestep
 
         # --- Action Space ---
         # The agent chooses a discrete current value from 0 to I_max
-        self.action_space = spaces.MultiDiscrete([self.I_max + 1, self.I_max + 1])
+        self.action_space = spaces.MultiDiscrete((self.I_max + 1) ** self.n_evs)
         
         # --- Observation Space ---
         # Defined as [Occupancy, SOC] 
         # Using MultiDiscrete for easy indexing in your Q-table
-        self.observation_space = spaces.MultiDiscrete([3,3])
+        self.observation_space = spaces.MultiDiscrete([3] * self.n_evs)
 
         # --- Internal State Variables ---
         self._current_t = 0
-        self._state = np.zeros(2, dtype=np.int32)  # [ev1_state, ev2_state]
-        self._soc = np.zeros(2, dtype=np.float32)  # SOC for each EV
+        self._state = np.zeros(self.n_evs, dtype=np.int32) 
+        self._soc = np.zeros(self.n_evs, dtype=np.float32)
 
-    # def get_observation(self):
-    #     """Converts internal float SOC to integer for the agent's observation."""
+    def _decode_action(self, index):
+        base = self.I_max + 1
+        action = np.zeros(self.n_evs, dtype=int)
 
-    #     if self._z == 0:
-    #         state = 0
-    #     elif self._soc < 100:
-    #         state = 1
-    #     else:
-    #         state = 2
-    #     return np.array(state, dtype=np.int32)
+        for i in range(self.n_evs - 1, -1, -1):
+            action[i] = index % base
+            index //= base
+
+        return action
 
     def get_observation(self):
         return self._state.copy()
@@ -66,7 +65,7 @@ class MultiEVChargingEnv(gym.Env):
         self._soc[:] = 0.0
         return self.get_observation(), {}
 
-    def step(self, action):
+    def step(self, action_index):
         """
         Executes one timestep in the environment.
         1. Process physical charging if an EV is present.
@@ -77,17 +76,15 @@ class MultiEVChargingEnv(gym.Env):
         reward = 0.0
         
 
-        i1, i2 = action
+        action = self._decode_action(action_index)
 
-        if i1 + i2 > self.P_max:
+        if np.sum(action) > int(self.P_max):
             reward -= 10
 
-        currents = [i1, i2]
-
-        for ev in range(2):
+        for ev in range(self.n_evs):
 
             if self._state[ev] == 1:
-                energy = self.V * currents[ev] * self.delta_t
+                energy = self.V * action[ev] * self.delta_t
                 self._soc[ev] = min(100, self._soc[ev] + (energy / self.C) * 100)
 
                 # If fully charged
