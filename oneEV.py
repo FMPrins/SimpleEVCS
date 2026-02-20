@@ -6,7 +6,7 @@ from gymnasium import spaces
 class EVChargingEnv(gym.Env): 
     metadata = {"render_modes": ["human"]}
 
-    def __init__(self, t_max=100, i_max=10, voltage=230.0, capacity=1000.0, delta_t=0.25):
+    def __init__(self, t_max=100, i_max=1, voltage=230.0, capacity=1000.0, delta_t=0.25):
         super().__init__()
 
         # --- Physical Parameters ---

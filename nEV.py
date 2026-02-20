@@ -51,10 +51,10 @@ class MultiEVChargingEnv(gym.Env):
         p_a = 0.2 #if 8 <= (self._current_t % 24) <= 18 else 0.05
         return np.random.random() < p_a
 
-    def _departure_occurred(self):
+    def _departure_occurred(self, soc):
         """Probability of an EV departing given the port is occupied."""
         # This matches your p_d(SOC) logic
-        p_d = 0.01 + (0.2 * (self._soc / 100.0))
+        p_d = 0.01 + (0.2 * (soc / 100.0))
         return np.random.random() < p_d
 
     def reset(self, seed=None, options=None):
@@ -75,11 +75,10 @@ class MultiEVChargingEnv(gym.Env):
         self._current_t += 1
         reward = 0.0
         
-
         action = self._decode_action(action_index)
 
         if np.sum(action) > int(self.P_max):
-            reward -= 10
+            reward -= 0
 
         for ev in range(self.n_evs):
 

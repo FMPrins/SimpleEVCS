@@ -16,13 +16,17 @@ def encode_state(obs, base=3):
     obs: array-like of length n
     base: number of discrete states per EV (default=3)
     """
-    index = 0
+    obs = np.atleast_1d(obs)
+
     n = len(obs)
-    
+
+    index = 0
+    base = 3  # since each EV has 3 possible states (0,1,2)
+
     for i in range(n):
-        index += obs[i] * (base ** (n - i - 1))
-        
-    return index
+        index += obs[i] * (base ** i)
+
+    return int(index)
 
 def encode_action(action_vec, I_max):
     """
@@ -65,8 +69,8 @@ def decode_action(index, n_evs, I_max):
 
 def objective(trial):
     # 2. Initialize a W&B run for this specific trial
-    lr = trial.suggest_float("learning_rate", 0.0003, 0.5, log=True)
-    gamma = trial.suggest_float("discount_factor", 0.90, 0.99)
+    lr =  0.03 #trial.suggest_float("learning_rate", 0.01, 0.05, log=True)
+    gamma = 0.99 #trial.suggest_float("discount_factor", 0.90, 0.99)
     eps = 0.01 
     
     # 2. Create a descriptive name
@@ -83,19 +87,24 @@ def objective(trial):
             "discount_factor": gamma,
             "epsilon": eps,
             "trial_num": trial.number,
-            "num_episodes": 5000,
+            "num_episodes": 10000,
         },
         reinit=True
     )
     config = wandb.config
 
-    n_evs = 2
-    i_max = 10
-    env = MultiEVChargingEnv(t_max=100, i_max = i_max, p_max = 10, n_evs= n_evs)
+    n_evs = 1
+    i_max = 1
+
+    # Multiple EVs, also allows for one EV. 
+    env = MultiEVChargingEnv(t_max=100, i_max = i_max, p_max = 1, n_evs= n_evs)
+
+    #Turn on for the old environment with only one EV. 
+    #env = EVChargingEnv(t_max = 100, i_max = i_max)
 
     agent = Qlearningagent(
-        state_space_size = 3 ** n_evs,              ##3 ** env.n_evs, 
-        action_space_size= (i_max + 1) ** n_evs,            ##(env.I_max + 1) ** env.n_envs,
+        state_space_size = 3 ** n_evs,              #3 ** env.n_evs, 
+        action_space_size= (i_max + 1) ** n_evs,    #(env.I_max + 1) ** env.n_envs,
         learning_rate=config.learning_rate,
         discount_factor=config.discount_factor,
         epsilon=config.epsilon,
@@ -129,6 +138,8 @@ def objective(trial):
         # 3. Log metrics to W&B
         if (episode + 1) % 100 == 0:
             avg_reward = np.mean(total_rewards[-100:])
+
+
             best_action_state_1 = np.argmax(agent.q_table[1])
             
             wandb.log({
@@ -158,6 +169,19 @@ def objective(trial):
             })
 
             plt.close()
+
+    best_actions_idx = np.argmax(agent.q_table, axis=1)
+
+    policy_table = wandb.Table(columns=["state_vector", "best_action"])
+
+    for state_idx, action_idx in enumerate(best_actions_idx):
+
+        state_vec = decode_state(state_idx, env.n_evs)
+        action_vec = decode_action(action_idx, env.n_evs, env.I_max)
+
+        policy_table.add_data(str(state_vec), str(action_vec))
+
+    wandb.log({"policy_table": policy_table})
 
     final_performance = np.mean(total_rewards[-100:])
     run.finish() # 4. Close the run
